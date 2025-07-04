@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Pitfalls Analysis Dashboard</title>
+
+  <!-- DataTables CSS -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- jQuery -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+  <!-- DataTables JS -->
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 2em;
+      background: #f9f9f9;
+    }
+    h1 {
+      color: #333;
+      text-align: center;
+      margin-bottom: 2em;
+    }
+    .chart-container {
+        width: 100%;
+        max-width: 800px;
+        margin: 0 auto 3em auto;
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+        canvas {
+        width: 100% !important;
+        height: 450px !important; 
+    }
+    .table-container {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    #myTable {
+      width: 100%;
+    }
+    .dataTables_wrapper {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Software Pitfalls Analysis Dashboard</h1>
+
+  <!-- CHART -->
+  <div class="chart-container">
+    <canvas id="myChart"></canvas>
+  </div>
+
+  <!-- TABLE -->
+  <div class="table-container">
+    <table id="myTable" class="display">
+    <thead>
+      <tr>
+        <th>Identifier</th>
+        <th>Source</th>
+        <th>Pitfall</th>
+        <th>Description</th>
+        <th>Example</th>
+        <th>Importance</th>
+      </tr>
+    </thead>
+    <tbody>
+       
+     </tbody>
+   </table>
+  </div>
+
+  <script>
+    // !!! I had Claude 4 help me make the JavaScript part of this code !!! 
+    function loadTableData() {
+
+        const timestamp = new Date().getTime();
+      fetch(`catalog.md?v=${timestamp}`)
+        .then(response => response.text())
+        .then(markdown => {
+          const lines = markdown.trim().split('\n');
+          const tableBody = $('#myTable tbody');
+          
+          for (let i = 2; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line.startsWith('|') && line.endsWith('|')) {
+              const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
+              if (cells.length >= 6) {
+                const [identifier, source, pitfall, description, example, importance] = cells;
+                
+                let exampleCell = example;
+                if (example.startsWith('http')) {
+                  exampleCell = `<a href="${example}" target="_blank">${example}</a>`;
+                }
+                
+                const row = `<tr>
+                  <td>${identifier}</td>
+                  <td>${source}</td>
+                  <td>${pitfall}</td>
+                  <td>${description}</td>
+                  <td>${exampleCell}</td>
+                  <td>${importance}</td>
+                </tr>`;
+                tableBody.append(row);
+              }
+            }
+          }
+          
+          $('#myTable').DataTable({
+            pageLength: 25,
+            order: [[0, 'asc']]
+          });
+        })
+        .catch(error => console.error('Error loading table data:', error));
+    }
+
+    function loadChartData() {
+      // Add cache-busting parameter to force reload
+      const timestamp = new Date().getTime();
+      fetch(`pitfalls_chart.csv?v=${timestamp}`)
+        .then(response => response.text())
+        .then(csv => {
+          const lines = csv.trim().split('\n');
+          const header = lines[0].split(',');
+          const sources = header.slice(1); 
+          
+          const labels = [];
+          const datasets = [];
+          
+          const colors = {
+            'codemeta.json': 'rgba(119, 202, 99, 0.8)',
+            'LICENSE': 'rgba(126, 80, 138, 0.8)',
+            'package.json': 'rgba(197, 7, 3, 0.8)',
+            'CITATION.cff': 'rgba(51, 3, 197, 0.8)',
+            'DOI badge': 'rgba(242, 242, 19, 0.8)'
+          };
+          
+          sources.forEach(source => {
+            datasets.push({
+              label: source,
+              data: [],
+              backgroundColor: colors[source] || 'rgba(128, 128, 128, 0.8)',
+              borderColor: colors[source]?.replace('0.8', '1') || 'rgba(128, 128, 128, 1)',
+              borderWidth: 1
+            });
+          });
+          
+          for (let i = 1; i < lines.length; i++) {
+            const cells = lines[i].split(',');
+            const identifier = cells[0];
+            labels.push(identifier);
+            
+            for (let j = 1; j < cells.length; j++) {
+              const value = cells[j] ? Number(cells[j]) : 0;
+              datasets[j-1].data.push(value);
+            }
+          }
+          
+          new Chart(document.getElementById('myChart'), {
+            type: 'bar',
+            data: {
+              labels: labels,
+              datasets: datasets
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                title: {
+                  display: true,
+                  text: 'Pitfalls by Identifier and Source'
+                },
+                legend: {
+                  display: true,
+                  position: 'top'
+                }
+              },
+              scales: {
+                x: {
+                  stacked: true,
+                  title: {
+                    display: true,
+                    text: 'Identifier'
+                  },
+                  ticks: {
+                    maxRotation: 90,
+                    minRotation: 90,
+                    autoSkip: false,  
+                    maxTicksLimit: false 
+                    }
+                },
+                y: {
+                  stacked: true,
+                  beginAtZero: true,
+                  title: {
+                    display: true,
+                    text: 'Count'
+                  }
+                }
+              }
+            }
+          });
+        })
+        .catch(error => console.error('Error loading chart data:', error));
+    }
+
+    $(document).ready(function () {
+      loadTableData();
+      loadChartData();
+    });
+  </script>
+</body>
+</html>
